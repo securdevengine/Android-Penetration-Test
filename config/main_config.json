@@ -1,0 +1,60 @@
+{
+    "tools": {
+        "jadx": "tools/jadx/bin/jadx",
+        "apktool": "tools/apktool",
+        "dex2jar": "tools/dex2jar/d2j-dex2jar.sh",
+        "aapt": "aapt",
+        "adb": "adb",
+        "frida": "frida",
+        "keytool": "keytool"
+    },
+    "output": {
+        "base_dir": "output",
+        "static_analysis": "output/static_analysis",
+        "dynamic_analysis": "output/dynamic_analysis",
+        "reports": "output/reports",
+        "extracted_data": "output/extracted_data"
+    },
+    "frida": {
+        "default_scripts": [
+            "frida_scripts/ssl_bypass/universal_ssl_bypass.js",
+            "frida_scripts/anti_debug/universal_bypass.js",
+            "frida_scripts/auth_hooks/jwt_hook.js"
+        ],
+        "auto_load": true,
+        "timeout": 30,
+        "device_type": "usb",
+        "spawn_mode": true
+    },
+    "analysis": {
+        "max_endpoints": 100,
+        "max_secrets": 50,
+        "max_vulnerabilities": 200,
+        "timeout": 300,
+        "parallel_processing": true,
+        "deep_analysis": true
+    },
+    "network": {
+        "proxy": {
+            "enabled": false,
+            "host": "127.0.0.1",
+            "port": 8080
+        },
+        "ssl_verification": false,
+        "timeout": 30,
+        "retry_attempts": 3
+    },
+    "logging": {
+        "level": "INFO",
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        "file": "logs/toolkit.log",
+        "max_size": 10485760,
+        "backup_count": 5
+    },
+    "security": {
+        "enable_sandbox": true,
+        "max_file_size": 104857600,
+        "allowed_extensions": [".apk", ".aar", ".dex", ".jar"],
+        "scan_timeout": 600
+    }
+}

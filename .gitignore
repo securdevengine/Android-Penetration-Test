@@ -1,0 +1,84 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+env/
+ENV/
+
+# Android/Java
+*.class
+*.jar
+*.war
+*.ear
+*.apk
+*.dex
+local.properties
+.gradle/
+build/
+captures/
+.navigation/
+
+# Tools and temporary files
+tools/jadx/
+tools/apktool/
+tools/ghidra/
+tools/dex2jar/
+tools/*.jar
+tools/*.zip
+
+# Output directories
+output/
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Certificates and keys
+*.p12
+*.pem
+*.crt
+*.key
+*.jks
+*.keystore
+
+# Frida server binaries
+frida-server*
+!frida_scripts/
+
+# Test files and samples
+samples/
+test_data/
+*.apk
+
+# Environment files
+.env
+.env.local
+set_android_env.*

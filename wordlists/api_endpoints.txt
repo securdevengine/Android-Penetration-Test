@@ -1,0 +1,200 @@
+/api/auth
+/api/login
+/api/signin
+/api/signup
+/api/register
+/api/logout
+/api/refresh
+/api/token
+/oauth/authorize
+/oauth/token
+/oauth/callback
+/auth/login
+/auth/callback
+/login
+/signin
+/register
+/logout
+
+/api/user
+/api/users
+/api/profile
+/api/account
+/api/me
+/user/profile
+/user/settings
+/account/settings
+
+# Versioned APIs
+/api/v1/
+/api/v2/
+/api/v3/
+/v1/
+/v2/
+/v3/
+/rest/v1/
+/rest/v2/
+
+# Data endpoints
+/api/data
+/api/search
+/api/query
+/api/list
+/api/get
+/api/post
+/api/put
+/api/delete
+/data/
+/search/
+/query/
+
+# File operations
+/api/upload
+/api/download
+/api/file
+/api/files
+/api/media
+/api/image
+/api/images
+/api/document
+/api/documents
+/upload/
+/download/
+/files/
+/media/
+
+# Admin endpoints
+/api/admin
+/api/management
+/api/config
+/api/settings
+/admin/
+/management/
+/config/
+/settings/
+
+# Mobile specific
+/api/mobile
+/api/android
+/api/ios
+/api/app
+/mobile/
+/android/
+/ios/
+/app/
+
+# Common REST patterns
+/api/create
+/api/read
+/api/update
+/api/delete
+/api/patch
+/api/options
+/api/head
+
+# Database operations
+/api/db
+/api/database
+/api/sql
+/api/query
+/api/execute
+/db/
+/database/
+
+# Debugging/Development
+/api/debug
+/api/test
+/api/dev
+/api/development
+/api/staging
+/debug/
+/test/
+/dev/
+
+# Status and health
+/api/status
+/api/health
+/api/ping
+/api/version
+/api/info
+/status/
+/health/
+/ping/
+
+# Payment and billing
+/api/payment
+/api/billing
+/api/purchase
+/api/subscription
+/payment/
+/billing/
+
+# Notifications
+/api/notification
+/api/notifications
+/api/push
+/api/message
+/api/messages
+/notifications/
+/push/
+
+# Social features
+/api/social
+/api/friends
+/api/follow
+/api/share
+/social/
+/friends/
+
+# Analytics and tracking
+/api/analytics
+/api/tracking
+/api/metrics
+/api/stats
+/analytics/
+/tracking/
+
+# Security endpoints
+/api/security
+/api/verify
+/api/validate
+/api/captcha
+/security/
+/verify/
+
+# Support and help
+/api/support
+/api/help
+/api/feedback
+/api/contact
+/support/
+/help/
+
+# Content management
+/api/content
+/api/cms
+/api/pages
+/api/posts
+/content/
+/cms/
+
+# Location services
+/api/location
+/api/geo
+/api/maps
+/location/
+/geo/
+
+# Real-time features
+/api/websocket
+/api/realtime
+/api/live
+/websocket/
+/ws/
+
+# Third-party integrations
+/api/integration
+/api/webhook
+/api/callback
+/integration/
+/webhook/

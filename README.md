@@ -102,6 +102,7 @@ Documentation
 - [Dynamic Analysis Guide](docs/03-dynamic-analysis.md)
 - [Authentication Analysis](docs/04-authentication-analysis.md)
 - [Anti-Debugging Bypass](docs/05-anti-debugging-bypass.md)
+- [Rooting Techniques](docs/06-rooting-techniques.md)
 
 Tools Included
 

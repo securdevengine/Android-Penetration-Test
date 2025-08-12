@@ -124,10 +124,12 @@ unxz frida-server-16.1.4-android-arm64.xz
 
 ### 2. Root Device (Physical Device)
 
-Using Magisk (Recommended)
+For comprehensive rooting techniques including KernelSU, SuperSU, and device-specific methods, see: docs/06-rooting-techniques.md
+
+Quick Magisk Setup (Recommended):
 Download Magisk Manager
-wget https://github.com/topjohnwu/Magisk/releases/latest/download/Magisk-v25.2.apk
-adb install Magisk-v25.2.apk
+wget https://github.com/topjohnwu/Magisk/releases/latest/download/Magisk-v26.1.apk
+adb install Magisk-v26.1.apk
 
 Extract boot image from device
 adb shell dd if=/dev/block/bootdevice/by-name/boot of=/sdcard/boot.img
@@ -138,6 +140,12 @@ Flash patched boot image
 adb reboot bootloader
 fastboot flash boot magisk_patched.img
 fastboot reboot
+
+Alternative: KernelSU (Kernel-level Root)
+For devices with kernel source availability:
+wget https://github.com/tiann/KernelSU/releases/latest/download/KernelSU_<version>.apk
+adb install KernelSU_<version>.apk
+Flash KernelSU-enabled kernel or use module method
 
 3. Setup Android Emulator (Alternative)
 Create AVD

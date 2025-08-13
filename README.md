@@ -95,6 +95,9 @@ Quick Start
 4. Run Dynamic Analysis
    python scripts/dynamic_analysis/frida_automation.py com.example.app
 
+5. Run OWASP Mobile Top 10 Validation
+   python scripts/owasp_validation/owasp_scanner.py target.apk
+
 Documentation
 
 - [Environment Setup](docs/01-environment-setup.md)
@@ -103,6 +106,7 @@ Documentation
 - [Authentication Analysis](docs/04-authentication-analysis.md)
 - [Anti-Debugging Bypass](docs/05-anti-debugging-bypass.md)
 - [Rooting Techniques](docs/06-rooting-techniques.md)
+- [OWASP Mobile Top 10 Validation](docs/07-owasp-mobile-top10-validation.md)
 
 Tools Included
 

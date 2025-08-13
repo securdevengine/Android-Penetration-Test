@@ -1,0 +1,105 @@
+# CODEOWNERS - Mobile Security Toolkit
+# This file defines mandatory reviewers for different parts of the codebase
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global fallback - all changes require review from security team
+* @securdevengine/security-team
+
+# Security-critical directories require security team approval
+/.github/ @securdevengine/security-team @securdevengine/devops-team
+/scripts/owasp_validation/ @securdevengine/security-team @securdevengine/owasp-experts
+/frida_scripts/ @securdevengine/security-team @securdevengine/mobile-security
+
+# Core static analysis tools
+/scripts/static_analysis/ @securdevengine/static-analysis-team @securdevengine/security-team
+
+# Dynamic analysis and Frida scripts  
+/scripts/dynamic_analysis/ @securdevengine/dynamic-analysis-team @securdevengine/mobile-security
+/frida_scripts/**/*.js @securdevengine/frida-experts @securdevengine/security-team
+
+# Authentication and crypto analysis
+/scripts/authentication/ @securdevengine/crypto-team @securdevengine/security-team
+
+# Utility scripts and environment
+/scripts/utils/ @securdevengine/devops-team @securdevengine/security-team
+
+# Configuration files
+/config/ @securdevengine/security-team @securdevengine/config-management
+*.json @securdevengine/config-management
+*.yml @securdevengine/devops-team
+*.yaml @securdevengine/devops-team
+
+# Documentation - requires technical writing and security review
+/docs/ @securdevengine/documentation-team @securdevengine/security-team
+README.md @securdevengine/documentation-team @securdevengine/project-leads
+SETUP.md @securdevengine/documentation-team @securdevengine/devops-team
+
+# OWASP-specific documentation
+/docs/*owasp* @securdevengine/owasp-experts @securdevengine/security-team
+
+# Security documentation
+/docs/*security* @securdevengine/security-team
+/docs/*authentication* @securdevengine/crypto-team @securdevengine/security-team
+/docs/*rooting* @securdevengine/mobile-security @securdevengine/security-team
+
+# Wordlists and test data
+/wordlists/ @securdevengine/content-team @securdevengine/security-team
+
+# Build and deployment
+requirements.txt @securdevengine/devops-team @securdevengine/security-team
+setup.sh @securdevengine/devops-team @securdevengine/security-team
+Dockerfile @securdevengine/devops-team @securdevengine/security-team
+docker-compose.yml @securdevengine/devops-team @securdevengine/security-team
+
+# Security and compliance files
+LICENSE @securdevengine/legal-team @securdevengine/project-leads
+.gitignore @securdevengine/devops-team
+SECURITY.md @securdevengine/security-team
+CODE_OF_CONDUCT.md @securdevengine/community-team @securdevengine/project-leads
+
+# GitHub-specific files
+/.github/workflows/ @securdevengine/devops-team @securdevengine/security-team
+/.github/ISSUE_TEMPLATE/ @securdevengine/community-team
+/.github/pull_request_template.md @securdevengine/process-team @securdevengine/security-team
+
+# Sensitive file patterns that always require security review
+**/*secret* @securdevengine/security-team
+**/*credential* @securdevengine/security-team  
+**/*password* @securdevengine/security-team
+**/*key* @securdevengine/security-team
+**/*token* @securdevengine/security-team
+**/*cert* @securdevengine/security-team
+
+# High-risk file extensions
+*.pem @securdevengine/security-team @securdevengine/crypto-team
+*.key @securdevengine/security-team @securdevengine/crypto-team
+*.p12 @securdevengine/security-team @securdevengine/crypto-team
+*.jks @securdevengine/security-team @securdevengine/crypto-team
+
+# Database and config files that might contain sensitive data
+*.db @securdevengine/security-team
+*.sqlite @securdevengine/security-team
+*.env @securdevengine/security-team @securdevengine/devops-team
+*.conf @securdevengine/security-team @securdevengine/config-management
+
+# Scripts that execute system commands
+**/*install* @securdevengine/devops-team @securdevengine/security-team
+**/*setup* @securdevengine/devops-team @securdevengine/security-team
+**/*deploy* @securdevengine/devops-team @securdevengine/security-team
+
+# Team Definitions (for reference - teams must be created in GitHub)
+# @securdevengine/security-team - Primary security reviewers
+# @securdevengine/mobile-security - Android/mobile security specialists  
+# @securdevengine/frida-experts - Frida and dynamic analysis experts
+# @securdevengine/static-analysis-team - Static analysis tool specialists
+# @securdevengine/dynamic-analysis-team - Dynamic analysis specialists
+# @securdevengine/crypto-team - Cryptography and authentication experts
+# @securdevengine/owasp-experts - OWASP Mobile Top 10 specialists
+# @securdevengine/devops-team - Infrastructure and deployment
+# @securdevengine/documentation-team - Technical writers
+# @securdevengine/config-management - Configuration specialists
+# @securdevengine/content-team - Content and wordlist maintainers
+# @securdevengine/process-team - Process and workflow specialists
+# @securdevengine/community-team - Community management
+# @securdevengine/project-leads - Project leadership
+# @securdevengine/legal-team - Legal and compliance

@@ -3,6 +3,7 @@
 import subprocess
 import sys
 import os
+import argparse
 import platform
 import socket
 import time
@@ -308,7 +309,7 @@ class AndroidDiagnosticTool:
                 print("- Push to device: adb push frida-server /data/local/tmp/")
                 print("- Set permissions: adb shell chmod 755 /data/local/tmp/frida-server")
     
-    def run_full_diagnostic(self):
+    def run_full_diagnostic(self, auto_fix=False):
         print("Android Reverse Engineering Environment Diagnostic Tool")
         print("="*60)
         
@@ -334,7 +335,7 @@ class AndroidDiagnosticTool:
             print()
         
         # Attempt fixes
-        if self.issues_found:
+        if auto_fix and self.issues_found:
             self.fix_common_issues()
         
         # Generate final report
@@ -343,16 +344,18 @@ class AndroidDiagnosticTool:
         return len(self.issues_found) == 0
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "--fix":
+    parser = argparse.ArgumentParser(description="Diagnose the Android testing environment")
+    parser.add_argument("--fix", action="store_true", help="attempt to fix detected issues")
+    args = parser.parse_args()
+
+    if args.fix:
         print("[*] Running diagnostic with automatic fixes...")
-        fix_mode = True
     else:
         print("[*] Running diagnostic in check-only mode...")
         print("[*] Use --fix flag to attempt automatic fixes")
-        fix_mode = False
     
     diagnostic = AndroidDiagnosticTool()
-    success = diagnostic.run_full_diagnostic()
+    success = diagnostic.run_full_diagnostic(auto_fix=args.fix)
     
     if success:
         print("\n[+] Environment is ready for Android reverse engineering!")

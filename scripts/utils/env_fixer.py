@@ -3,9 +3,13 @@
 import subprocess
 import sys
 import os
+import argparse
 import platform
 import time
-import requests
+try:
+    import requests
+except ImportError:  # pragma: no cover - runtime download dependency
+    requests = None
 import zipfile
 from pathlib import Path
 
@@ -398,6 +402,13 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="12d1", MODE="0666", GROUP="plugdev"
         print("\n[*] Run diagnostic_tool.py to verify all fixes")
 
 def main():
+    parser = argparse.ArgumentParser(description="Repair common Android testing environment issues")
+    parser.parse_args()
+
+    if requests is None:
+        print("[-] The 'requests' package is required. Install it with: pip install requests")
+        sys.exit(1)
+
     if os.geteuid() == 0 if hasattr(os, 'geteuid') else False:
         print("[!] Do not run this script as root/administrator")
         sys.exit(1)

@@ -1,163 +1,154 @@
-Android Mobile Application Reverse Engineering Toolkit
+# Android Mobile Application Penetration Testing Toolkit
 
-A comprehensive toolkit for Android mobile application penetration testing, reverse engineering, and security analysis.
+A command-line toolkit and set of Frida hooks for authorized Android application
+security assessment. It covers APK static analysis, authentication testing,
+runtime instrumentation, rooting diagnostics, and OWASP Mobile Top 10 checks.
 
-Objectives
+Use it only on applications and devices you own or are explicitly authorized to
+test.
 
-- Extract undocumented API endpoints from Android APKs
-- Analyze authentication logic (token generation, session management)
-- Bypass anti-debugging protections
-- Perform static and dynamic analysis
-- Automate security testing with Python scripts
+## Objectives
 
-Project Structure
+- Extract API endpoints and potential secrets from APK contents.
+- Inspect Android manifests and application structure.
+- Analyze JWTs and exercise authentication flows.
+- Instrument authorized test applications with Frida.
+- Validate common OWASP Mobile Top 10 risks.
+- Diagnose Android testing and rooting prerequisites.
 
-android-reverse-engineering-toolkit/
-├── README.md                          Main documentation
-├── SETUP.md                          Environment setup guide
-├── requirements.txt                  Python dependencies
-├── config/                          Configuration files
-│   ├── burp_config.json
-│   ├── frida_config.json
-│   └── mobsf_config.yml
-├── docs/                           Detailed documentation
-│   ├── 01-environment-setup.md
-│   ├── 02-static-analysis.md
-│   ├── 03-dynamic-analysis.md
-│   ├── 04-authentication-analysis.md
-│   └── 05-anti-debugging-bypass.md
-├── tools/                          External tools and binaries
-│   ├── apktool/
-│   ├── jadx/
-│   ├── ghidra/
-│   └── install_tools.sh
-├── scripts/                        Python automation scripts
-│   ├── static_analysis/
-│   │   ├── apk_analyzer.py
-│   │   ├── endpoint_extractor.py
-│   │   ├── manifest_analyzer.py
-│   │   └── secret_finder.py
-│   ├── dynamic_analysis/
-│   │   ├── frida_automation.py
-│   │   ├── network_monitor.py
-│   │   └── log_analyzer.py
-│   ├── authentication/
-│   │   ├── jwt_analyzer.py
-│   │   ├── auth_flow_tester.py
-│   │   └── token_interceptor.py
-│   └── utils/
-│       ├── adb_helper.py
-│       ├── crypto_utils.py
-│       └── report_generator.py
-├── frida_scripts/                  Frida JavaScript hooks
-│   ├── ssl_bypass/
-│   │   ├── ssl_pinning_bypass.js
-│   │   └── certificate_bypass.js
-│   ├── auth_hooks/
-│   │   ├── jwt_hook.js
-│   │   ├── hmac_hook.js
-│   │   └── refresh_hook.js
-│   ├── anti_debug/
-│   │   ├── proc_spoofing.js
-│   │   ├── ptrace_bypass.js
-│   │   └── jdwp_bypass.js
-│   └── general/
-│       ├── crypto_logger.js
-│       ├── file_monitor.js
-│       └── network_tracer.js
-├── exploits/                       Proof of concept exploits
-│   ├── jwt_forge.py
-│   ├── api_fuzzer.py
-│   └── component_exploit.py
-├── wordlists/                      Custom wordlists
-│   ├── api_endpoints.txt
-│   ├── android_secrets.txt
-│   └── jwt_secrets.txt
-├── output/                         Analysis output directory
-│   ├── static_analysis/
-│   ├── dynamic_analysis/
-│   ├── reports/
-│   └── extracted_data/
-└── samples/                        Sample APKs for testing
-    └── vulnerable_app.apk
+## Project Structure
 
-Quick Start
+The tree below reflects the files that currently ship. Planned additions are
+tracked in [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md).
 
-1. Setup Environment
+```text
+.
+|-- checklists/
+|   `-- owasp-mobile-top10-manual-testing-checklist.md
+|-- config/
+|   `-- main_config.json
+|-- docs/
+|   |-- 01-environment-setup.md
+|   |-- 02-static-analysis.md
+|   |-- 03-dynamic-analysis.md
+|   |-- 04-authentication-analysis.md
+|   |-- 05-anti-debugging-bypass.md
+|   |-- 06-rooting-techniques.md
+|   `-- 07-owasp-mobile-top10-validation.md
+|-- frida_scripts/
+|   |-- anti_debug/universal_bypass.js
+|   |-- auth_hooks/jwt_hook.js
+|   |-- owasp/comprehensive_owasp_validator.js
+|   |-- owasp_validation/
+|   |   |-- data_storage_monitor.js
+|   |   |-- network_monitor.js
+|   |   `-- permission_monitor.js
+|   `-- ssl_bypass/universal_ssl_bypass.js
+|-- scripts/
+|   |-- authentication/
+|   |   |-- auth_flow_tester.py
+|   |   `-- jwt_analyzer.py
+|   |-- dynamic_analysis/frida_automation.py
+|   |-- owasp_validation/owasp_scanner.py
+|   |-- static_analysis/
+|   |   |-- apk_analyzer.py
+|   |   |-- endpoint_extractor.py
+|   |   |-- manifest_analyzer.py
+|   |   `-- secret_finder.py
+|   `-- utils/
+|       |-- diagnostic_tool.py
+|       |-- env_fixer.py
+|       `-- rooting_assistant.py
+|-- tests/test_cli_smoke.py
+|-- wordlists/api_endpoints.txt
+|-- PROJECT_SUMMARY.md
+|-- SETUP.md
+|-- TROUBLESHOOTING.md
+|-- requirements.txt
+`-- setup.sh
+```
+
+## Quick Start
+
+1. Set up the environment:
+
+   ```bash
    ./setup.sh
+   ```
 
-2. Install Dependencies
-   pip install -r requirements.txt
+2. Install Python dependencies:
 
-3. Run Static Analysis
-   python scripts/static_analysis/apk_analyzer.py samples/vulnerable_app.apk
+   ```bash
+   python -m pip install -r requirements.txt
+   ```
 
-4. Run Dynamic Analysis
+3. Run static analysis against an APK you are authorized to test:
+
+   ```bash
+   python scripts/static_analysis/apk_analyzer.py /path/to/target.apk
+   ```
+
+4. Attach Frida to a test application:
+
+   ```bash
    python scripts/dynamic_analysis/frida_automation.py com.example.app
+   frida -U -f com.example.app -l frida_scripts/ssl_bypass/universal_ssl_bypass.js
+   ```
 
-5. Run OWASP Mobile Top 10 Validation
-   python scripts/owasp_validation/owasp_scanner.py target.apk
+5. Run OWASP validation:
 
-Documentation
+   ```bash
+   python scripts/owasp_validation/owasp_scanner.py /path/to/target.apk
+   ```
 
-- [Environment Setup](docs/01-environment-setup.md)
-- [Static Analysis Guide](docs/02-static-analysis.md)
-- [Dynamic Analysis Guide](docs/03-dynamic-analysis.md)
-- [Authentication Analysis](docs/04-authentication-analysis.md)
-- [Anti-Debugging Bypass](docs/05-anti-debugging-bypass.md)
-- [Rooting Techniques](docs/06-rooting-techniques.md)
-- [OWASP Mobile Top 10 Validation](docs/07-owasp-mobile-top10-validation.md)
+Every Python entry point supports `--help`. Device- and network-dependent
+commands still require their documented tools and Python packages.
 
-Tools Included
+## Documentation
 
-Static Analysis
-- JADX - APK to Java decompiler
-- APKTool - Resource extraction and APK rebuilding
-- Ghidra - Native library analysis
-- MobSF - Automated static scanning
-- Androguard - Python-based APK analysis
+- [Setup](SETUP.md)
+- [Troubleshooting](TROUBLESHOOTING.md)
+- [Environment setup](docs/01-environment-setup.md)
+- [Static analysis](docs/02-static-analysis.md)
+- [Dynamic analysis](docs/03-dynamic-analysis.md)
+- [Authentication analysis](docs/04-authentication-analysis.md)
+- [Anti-debugging bypass](docs/05-anti-debugging-bypass.md)
+- [Rooting techniques](docs/06-rooting-techniques.md)
+- [OWASP Mobile Top 10 validation](docs/07-owasp-mobile-top10-validation.md)
 
-Dynamic Analysis
-- Frida - Runtime hooking and instrumentation
-- Objection - Frida-powered exploration tool
-- Burp Suite - HTTP/HTTPS traffic interception
-- Drozer - Android security assessment
+## Tools Included
 
-Custom Scripts
-- Endpoint Extractor - Extract API endpoints from APKs
-- JWT Analyzer - Analyze JSON Web Tokens
-- Auth Flow Tester - Test authentication mechanisms
-- Anti-Debug Bypasser - Bypass protection mechanisms
+- Python analyzers for APKs, manifests, endpoints, secrets, JWTs, authentication
+  flows, and OWASP checks.
+- Frida hooks for SSL pinning, anti-debugging, JWT observation, network activity,
+  permissions, and data storage.
+- Environment diagnostics, repair guidance, and rooting assistance.
 
-Security Features
+External tools such as ADB, JADX, APKTool, Frida, and Burp Suite are not bundled.
+See [SETUP.md](SETUP.md) for installation requirements.
 
-- SSL Certificate Pinning Bypass
-- Root Detection Bypass
-- Anti-Debugging Protection Bypass
-- JWT Token Manipulation
-- API Endpoint Discovery
-- Authentication Logic Analysis
+## Testing
 
-Reporting
+```bash
+python -m compileall -q scripts
+python -m unittest discover -s tests -v
+```
 
-The toolkit generates comprehensive reports including:
-- Vulnerability assessments
-- API endpoint mappings
-- Authentication flow diagrams
-- Security recommendations
+Frida JavaScript syntax can be checked with:
 
-Contributing
+```bash
+find frida_scripts -name '*.js' -exec node --check {} \;
+```
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+## Contributing
 
-License
+1. Fork the repository and create a focused feature branch.
+2. Add or update tests with behavior changes.
+3. Run the Python and Frida checks above.
+4. Open a pull request describing the tested behavior.
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+## License and Disclaimer
 
-Disclaimer
-
-This toolkit is intended for educational purposes and authorized security testing only. Users are responsible for complying with applicable laws and regulations.
+This project is licensed under the MIT License. It is intended for education and
+authorized security testing only. Users are responsible for obtaining permission
+and complying with applicable laws and policies.

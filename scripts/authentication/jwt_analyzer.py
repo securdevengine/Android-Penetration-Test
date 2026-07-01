@@ -6,7 +6,6 @@ This script provides comprehensive analysis of JSON Web Tokens (JWTs) found in A
 applications, including vulnerability detection, token manipulation, and security testing.
 """
 
-import jwt
 import json
 import base64
 import hashlib
@@ -16,12 +15,22 @@ import sys
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
-import requests
-from urllib3.exceptions import InsecureRequestWarning
 import threading
 
-# Disable SSL warnings for testing
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+try:
+    import jwt
+except (KeyboardInterrupt, SystemExit):
+    raise
+except BaseException:  # pragma: no cover - optional/broken native dependency
+    jwt = None
+
+try:
+    import requests
+    from urllib3.exceptions import InsecureRequestWarning
+except ImportError:  # pragma: no cover - optional API-testing dependency
+    requests = None
+else:
+    requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 class JWTAnalyzer:
     def __init__(self, token: str = None):
@@ -646,7 +655,15 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
     
     args = parser.parse_args()
-    
+
+    if jwt is None:
+        print("[-] The 'PyJWT' package is not installed. Install it with: pip install PyJWT cryptography")
+        sys.exit(1)
+
+    if args.test_api and requests is None:
+        print("[-] The 'requests' package is required for --test-api. Install it with: pip install requests")
+        sys.exit(1)
+
     # Get token from argument or file
     token = None
     if args.token:

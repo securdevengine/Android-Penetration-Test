@@ -6,7 +6,10 @@ This script provides automated Frida instrumentation and analysis for Android ap
 It handles script loading, data collection, and result analysis with minimal user intervention.
 """
 
-import frida
+try:
+    import frida
+except ImportError:  # pragma: no cover - optional runtime dependency
+    frida = None
 import sys
 import time
 import json
@@ -492,7 +495,11 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
     
     args = parser.parse_args()
-    
+
+    if frida is None:
+        print("[-] The 'frida' package is not installed. Install it with: pip install frida frida-tools")
+        sys.exit(1)
+
     try:
         # Create automation instance
         automation = FridaAutomation(args.package_name, args.output)

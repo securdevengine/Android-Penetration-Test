@@ -6,7 +6,12 @@ This script provides comprehensive analysis of JSON Web Tokens (JWTs) found in A
 applications, including vulnerability detection, token manipulation, and security testing.
 """
 
-import jwt
+try:
+    import jwt
+except (KeyboardInterrupt, SystemExit):
+    raise
+except BaseException:  # pragma: no cover - optional/broken runtime dependency (e.g. missing cffi backend)
+    jwt = None
 import json
 import base64
 import hashlib
@@ -646,7 +651,11 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
     
     args = parser.parse_args()
-    
+
+    if jwt is None:
+        print("[-] The 'PyJWT' package is not installed. Install it with: pip install PyJWT cryptography")
+        sys.exit(1)
+
     # Get token from argument or file
     token = None
     if args.token:

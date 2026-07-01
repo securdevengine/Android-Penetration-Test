@@ -4,6 +4,7 @@ import os
 import sys
 import re
 import json
+import argparse
 import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -734,18 +735,20 @@ class OWASPMobileScanner:
         return self.generate_report()
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python owasp_scanner.py <path_to_apk>")
+    parser = argparse.ArgumentParser(
+        description='OWASP Mobile Top 10 (2024) validation scanner for Android APKs'
+    )
+    parser.add_argument('apk_path', help='Path to the APK file to scan')
+    parser.add_argument('-o', '--output', help='Output directory for scan results')
+    args = parser.parse_args()
+
+    if not os.path.exists(args.apk_path):
+        print(f"Error: APK file not found: {args.apk_path}")
         sys.exit(1)
-    
-    apk_path = sys.argv[1]
-    if not os.path.exists(apk_path):
-        print(f"Error: APK file not found: {apk_path}")
-        sys.exit(1)
-    
-    scanner = OWASPMobileScanner(apk_path)
-    report = scanner.run_full_scan()
-    
+
+    scanner = OWASPMobileScanner(args.apk_path, output_dir=args.output)
+    scanner.run_full_scan()
+
     print(f"\nScan complete! Check the output directory: {scanner.output_dir}")
 
 if __name__ == "__main__":

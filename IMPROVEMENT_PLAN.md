@@ -19,7 +19,7 @@ prioritized roadmap to close the remaining gaps.
 | Required CI docs (`docs/01`–`07`) present | ✅ Pass |
 | Documentation matches on-disk file tree | ❌ Large drift (see §3) |
 
-### Fixed in this change
+### Fixed — round 1 (CLI robustness)
 
 1. **`owasp_scanner.py`** — replaced ad-hoc `sys.argv` parsing (which treated
    `--help` as an APK path) with `argparse`, consistent with the other
@@ -31,6 +31,26 @@ prioritized roadmap to close the remaining gaps.
 3. **`jwt_analyzer.py`** — `import jwt` (PyJWT) is now guarded so the CLI works
    without the crypto backend installed and exits with a clear install hint
    instead of an uncaught error.
+
+### Fixed — round 2 (CI, safety, tests)
+
+4. **CI workflow** — now triggers on PRs to `development` (not just `main`),
+   diffs against the actual PR base SHA instead of `origin/main`, upgrades
+   `upload-artifact` v3→v4, and installs `frida-tools` via pip instead of npm.
+   Added a `unit-tests` job wired into the approval gate.
+5. **TLS secure by default** — `jwt_analyzer.py` and `auth_flow_tester.py` now
+   verify certificates by default; certificate verification is only disabled via
+   an explicit `--insecure` flag (which also scopes the urllib3 warning
+   suppression to that opt-in).
+6. **JWT report redaction** — `jwt_analyzer.py` redacts the raw token,
+   signature, payload values, and forged tokens in saved reports by default
+   (claim *names* are preserved for analysis); `--include-sensitive` opts back
+   into the full data.
+7. **Dependency split** — `requirements.txt` now lists only the packages the
+   shipped scripts import; dev tooling moved to `requirements-dev.txt` and
+   advertised-but-unused packages to `requirements-optional.txt`.
+8. **Unit tests** — added `tests/` (pytest) covering JWT parsing + redaction,
+   secret detection, endpoint extraction, and manifest analysis (16 tests).
 
 ## 2. Known remaining code issues
 
@@ -74,11 +94,13 @@ breaks copy-paste instructions.
   sample or change the example to a `<target.apk>` placeholder).
 
 ### P1 — Baseline quality gates
-- Add a `tests/` suite (pytest) covering the pure-logic helpers that don't need a
-  device: JWT structural parsing, secret-finder regexes, endpoint extraction,
-  manifest parsing. Wire it into `.github/workflows/security-validation.yml`.
+- ~~Add a `tests/` suite (pytest) covering the pure-logic helpers~~ **Done**
+  (round 2): `tests/` covers JWT parsing/redaction, secret detection, endpoint
+  extraction, and manifest parsing, wired into CI as the `unit-tests` job.
 - Make `black`/`isort`/`flake8` blocking (currently `|| echo`, so style drift
   never fails CI). Run one formatting pass first so the gate starts green.
+  _(Still pending — left non-blocking so CI does not fail on pre-existing,
+  unrelated style issues.)_
 
 ### P2 — Fill the highest-value documented gaps (create, don't just delete)
 - `utils/report_generator.py` (HTML/JSON consolidation — several scanners already

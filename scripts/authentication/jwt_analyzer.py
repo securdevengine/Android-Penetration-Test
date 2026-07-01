@@ -25,12 +25,14 @@ import requests
 from urllib3.exceptions import InsecureRequestWarning
 import threading
 
-# Disable SSL warnings for testing
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 class JWTAnalyzer:
-    def __init__(self, token: str = None):
+    def __init__(self, token: str = None, verify_tls: bool = True):
         self.token = token
+        self.verify_tls = verify_tls
+        if not verify_tls:
+            # Only silence warnings when the user has explicitly opted out of verification.
+            requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
         self.header = None
         self.payload = None
         self.signature = None
@@ -549,7 +551,7 @@ class JWTAnalyzer:
         
         try:
             # Test original token
-            response = requests.get(api_url, headers=test_headers, verify=False, timeout=10)
+            response = requests.get(api_url, headers=test_headers, verify=self.verify_tls, timeout=10)
             results['original_token'] = {
                 'status_code': response.status_code,
                 'response_length': len(response.content),
@@ -564,7 +566,7 @@ class JWTAnalyzer:
                     test_headers['Authorization'] = f'Bearer {forged_token}'
                     
                     try:
-                        response = requests.get(api_url, headers=test_headers, verify=False, timeout=10)
+                        response = requests.get(api_url, headers=test_headers, verify=self.verify_tls, timeout=10)
                         results[token_type] = {
                             'status_code': response.status_code,
                             'response_length': len(response.content),
@@ -579,24 +581,42 @@ class JWTAnalyzer:
         
         return results
     
-    def generate_report(self) -> Dict:
-        """Generate comprehensive analysis report"""
+    def generate_report(self, include_sensitive: bool = False) -> Dict:
+        """Generate comprehensive analysis report.
+
+        By default the report redacts secret material (the raw token, its
+        signature, payload claim values, and any forged tokens) so reports are
+        safe to store and share. Pass ``include_sensitive=True`` to write the
+        full data.
+        """
+        redacted = '[REDACTED - re-run with --include-sensitive]'
+
         report = {
-            'token': self.token,
-            'header': self.header,
-            'payload': self.payload,
-            'signature': self.signature,
             'analysis_time': datetime.now().isoformat(),
+            'header': self.header,
             'vulnerabilities': self.vulnerabilities,
             'risk_score': self._calculate_risk_score(),
-            'forged_tokens': {},
-            'recommendations': self._generate_recommendations()
+            'recommendations': self._generate_recommendations(),
+            'sensitive_data_included': include_sensitive,
         }
-        
-        # Add forged tokens if vulnerabilities exist
+
+        forged_tokens = {}
         if any(v['metadata'].get('exploitable', False) for v in self.vulnerabilities):
-            report['forged_tokens'] = self.create_forged_tokens()
-        
+            forged_tokens = self.create_forged_tokens()
+
+        if include_sensitive:
+            report['token'] = self.token
+            report['payload'] = self.payload
+            report['signature'] = self.signature
+            report['forged_tokens'] = forged_tokens
+        else:
+            report['token'] = redacted
+            report['signature'] = redacted
+            # Preserve the payload structure (claim names) without leaking values.
+            report['payload'] = redacted
+            report['payload_claims'] = sorted(self.payload.keys()) if self.payload else []
+            report['forged_tokens'] = {name: redacted for name in forged_tokens}
+
         return report
     
     def _calculate_risk_score(self) -> int:
@@ -648,8 +668,12 @@ def main():
     parser.add_argument('-o', '--output', help='Output file for analysis report')
     parser.add_argument('--brute-force', action='store_true', help='Attempt to brute force HMAC secret')
     parser.add_argument('--max-attempts', type=int, default=10000, help='Maximum brute force attempts')
+    parser.add_argument('--insecure', action='store_true',
+                        help='Disable TLS certificate verification when testing tokens against an API')
+    parser.add_argument('--include-sensitive', action='store_true',
+                        help='Include raw tokens, signatures, payload values, and forged tokens in the saved report (redacted by default)')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
-    
+
     args = parser.parse_args()
 
     if jwt is None:
@@ -674,7 +698,7 @@ def main():
     
     try:
         # Create analyzer
-        analyzer = JWTAnalyzer(token)
+        analyzer = JWTAnalyzer(token, verify_tls=not args.insecure)
         
         if not analyzer.header:
             print("[-] Failed to parse JWT token")
@@ -701,13 +725,15 @@ def main():
                     print(f"    {test_type}: {status} (HTTP {result['status_code']})")
         
         # Generate report
-        report = analyzer.generate_report()
-        
+        report = analyzer.generate_report(include_sensitive=args.include_sensitive)
+
         # Save report if output file specified
         if args.output:
             with open(args.output, 'w') as f:
                 json.dump(report, f, indent=2)
             print(f"\n[+] Report saved to {args.output}")
+            if not args.include_sensitive:
+                print("    (sensitive fields redacted; use --include-sensitive to write raw values)")
         
         # Print summary
         print(f"\n[+] Analysis Summary:")

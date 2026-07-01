@@ -21,14 +21,15 @@ import threading
 from datetime import datetime, timedelta
 import urllib3
 
-# Disable SSL warnings for testing
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class AuthFlowTester:
-    def __init__(self, base_url: str, config_file: str = None):
+    def __init__(self, base_url: str, config_file: str = None, verify_tls: bool = True):
         self.base_url = base_url.rstrip('/')
         self.session = requests.Session()
-        self.session.verify = False  # Disable SSL verification for testing
+        # Verify TLS certificates by default; only disable when explicitly requested.
+        self.session.verify = verify_tls
+        if not verify_tls:
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         
         # Test results
         self.results = {
@@ -939,12 +940,14 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
     parser.add_argument('--endpoint', help='Test specific endpoint only')
     parser.add_argument('--timeout', type=int, default=10, help='Request timeout in seconds')
-    
+    parser.add_argument('--insecure', action='store_true',
+                        help='Disable TLS certificate verification (use only against test targets you control)')
+
     args = parser.parse_args()
-    
+
     try:
         # Create tester
-        tester = AuthFlowTester(args.base_url, args.config)
+        tester = AuthFlowTester(args.base_url, args.config, verify_tls=not args.insecure)
         
         if args.timeout:
             tester.config['timeout'] = args.timeout

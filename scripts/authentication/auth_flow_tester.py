@@ -6,7 +6,8 @@ This script provides automated testing of authentication mechanisms in Android a
 including login bypass techniques, session management testing, and OAuth vulnerabilities.
 """
 
-import requests
+from __future__ import annotations
+
 import json
 import time
 import hashlib
@@ -19,10 +20,14 @@ from urllib.parse import urljoin, urlparse, parse_qs
 from typing import Dict, List, Optional, Tuple, Any
 import threading
 from datetime import datetime, timedelta
-import urllib3
-
-# Disable SSL warnings for testing
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+try:
+    import requests
+    import urllib3
+except ImportError:  # pragma: no cover - runtime network dependencies
+    requests = None
+    urllib3 = None
+else:
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class AuthFlowTester:
     def __init__(self, base_url: str, config_file: str = None):
@@ -941,6 +946,10 @@ def main():
     parser.add_argument('--timeout', type=int, default=10, help='Request timeout in seconds')
     
     args = parser.parse_args()
+
+    if requests is None:
+        print("[-] The 'requests' package is required. Install it with: pip install requests urllib3")
+        sys.exit(1)
     
     try:
         # Create tester

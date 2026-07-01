@@ -3,7 +3,11 @@
 import subprocess
 import sys
 import os
-import requests
+import argparse
+try:
+    import requests
+except ImportError:  # pragma: no cover - runtime download dependency
+    requests = None
 import platform
 import json
 from pathlib import Path
@@ -460,21 +464,29 @@ class RootingAssistant:
                 print("[!] Invalid option")
 
 def main():
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--check":
-            assistant = RootingAssistant()
-            assistant.detect_device_info()
-            assistant.check_root_status()
-            assistant.analyze_rooting_options()
-            assistant.generate_rooting_report()
-        elif sys.argv[1] == "--magisk":
-            assistant = RootingAssistant()
-            assistant.automated_magisk_root()
-        elif sys.argv[1] == "--kernelsu":
-            assistant = RootingAssistant()
-            assistant.check_kernelsu_compatibility()
-        else:
-            print("Usage: python rooting_assistant.py [--check|--magisk|--kernelsu]")
+    parser = argparse.ArgumentParser(description="Assess and guide Android device rooting")
+    actions = parser.add_mutually_exclusive_group()
+    actions.add_argument("--check", action="store_true", help="check device and rooting options")
+    actions.add_argument("--magisk", action="store_true", help="start the Magisk rooting workflow")
+    actions.add_argument("--kernelsu", action="store_true", help="check KernelSU compatibility")
+    args = parser.parse_args()
+
+    if requests is None:
+        print("[-] The 'requests' package is required. Install it with: pip install requests")
+        sys.exit(1)
+
+    if args.check:
+        assistant = RootingAssistant()
+        assistant.detect_device_info()
+        assistant.check_root_status()
+        assistant.analyze_rooting_options()
+        assistant.generate_rooting_report()
+    elif args.magisk:
+        assistant = RootingAssistant()
+        assistant.automated_magisk_root()
+    elif args.kernelsu:
+        assistant = RootingAssistant()
+        assistant.check_kernelsu_compatibility()
     else:
         assistant = RootingAssistant()
         assistant.interactive_rooting_assistant()

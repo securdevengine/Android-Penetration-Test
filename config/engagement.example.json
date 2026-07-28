@@ -1,0 +1,55 @@
+{
+  "engagement_id": "ENG-2026-0001",
+  "client": "Example Corp - Internal Mobile Security Assessment",
+  "operator": {
+    "id": "operator@example.com",
+    "name": "Jane Operator"
+  },
+  "authorized_by": "CISO, Example Corp (written authorization on file: LEGAL-2026-0001)",
+  "scope": {
+    "allowed_hosts": [
+      "staging.example.com",
+      "*.staging.example.com",
+      "qa-api.example.com"
+    ],
+    "denied_hosts": [
+      "*.prod.example.com",
+      "www.example.com"
+    ],
+    "allowed_packages": [
+      "com.example.app.debug",
+      "com.example.app.staging"
+    ],
+    "environments_allowed": [
+      "staging",
+      "qa"
+    ]
+  },
+  "window": {
+    "start": "2026-07-27T00:00:00Z",
+    "end": "2026-08-27T23:59:59Z",
+    "timezone": "UTC"
+  },
+  "controls": {
+    "intrusive_tests_approved": false,
+    "production_denied": true,
+    "global_request_budget": 5000,
+    "max_concurrency": 4,
+    "rate_limit_per_second": 5,
+    "account_lockout_guard": true
+  },
+  "evidence": {
+    "redact_by_default": true,
+    "encrypt": true,
+    "retention_days": 30
+  },
+  "kill_switch_file": "",
+  "_notes": [
+    "This is an EXAMPLE. Copy it, edit scope/window/controls, then sign it:",
+    "  python scripts/roe_sign.py sign --in engagement.json --private authorizer.key --out engagement.signed.json",
+    "Active tools refuse to run without a validly signed ROE whose signing key",
+    "you have configured as trusted (ROE_AUTHORIZER_PUBKEYS).",
+    "intrusive_tests_approved starts false: only passive checks run until an",
+    "authorizer re-signs the ROE with it set to true."
+  ]
+}

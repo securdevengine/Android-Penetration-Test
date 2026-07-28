@@ -14,14 +14,18 @@ import hmac
 import argparse
 import sys
 import time
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
 import requests
-from urllib3.exceptions import InsecureRequestWarning
 import threading
 
-# Disable SSL warnings for testing
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+# Bootstrap the shared safety/control layer (scripts/core).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from core.roe import RulesOfEngagement  # noqa: E402
+from core.netcontrol import SafeSession, TLSPolicy  # noqa: E402
+from core.evidence import EvidenceStore, AuditLog, redact  # noqa: E402
+from core.errors import SafetyError, ApprovalRequired  # noqa: E402
 
 class JWTAnalyzer:
     def __init__(self, token: str = None):
@@ -532,46 +536,64 @@ class JWTAnalyzer:
         print("[-] Secret not found")
         return None
     
-    def test_token_against_api(self, api_url: str, headers: Dict = None) -> Dict:
-        """Test JWT token against an API endpoint"""
+    def test_token_against_api(self, api_url: str, session: SafeSession,
+                               roe: RulesOfEngagement, headers: Dict = None) -> Dict:
+        """Test the JWT against a live API endpoint through the safety layer.
+
+        The endpoint must be in the ROE scope (enforced by SafeSession) and TLS
+        verification is on by default. Submitting *forged* tokens to a live API
+        is intrusive and only runs when the ROE approves intrusive testing; the
+        original-token request is a passive validation and always allowed
+        in-scope.
+        """
         print(f"[+] Testing token against API: {api_url}")
-        
-        test_headers = headers or {}
-        test_headers['Authorization'] = f'Bearer {self.token}'
-        test_headers['Content-Type'] = 'application/json'
-        
+
+        base_headers = dict(headers or {})
+        base_headers['Content-Type'] = 'application/json'
+
         results = {}
-        
         try:
-            # Test original token
-            response = requests.get(api_url, headers=test_headers, verify=False, timeout=10)
+            # Passive: validate the token we already hold.
+            orig_headers = dict(base_headers, Authorization=f'Bearer {self.token}')
+            response = session.get(api_url, headers=orig_headers)
             results['original_token'] = {
                 'status_code': response.status_code,
                 'response_length': len(response.content),
-                'success': response.status_code < 400
+                'success': response.status_code < 400,
             }
-            
-            # Test forged tokens if vulnerabilities exist
+
+            # Intrusive: submitting forged tokens requires ROE approval.
+            try:
+                roe.require_intrusive_approval('jwt_forged_token_submission')
+            except ApprovalRequired:
+                results['forged_tokens'] = 'SKIPPED - intrusive testing not approved in ROE'
+                return results
+
             forged_tokens = self.create_forged_tokens()
-            
             for token_type, forged_token in forged_tokens.items():
-                if forged_token:
-                    test_headers['Authorization'] = f'Bearer {forged_token}'
-                    
-                    try:
-                        response = requests.get(api_url, headers=test_headers, verify=False, timeout=10)
-                        results[token_type] = {
-                            'status_code': response.status_code,
-                            'response_length': len(response.content),
-                            'success': response.status_code < 400,
-                            'token': forged_token[:50] + '...'
-                        }
-                    except Exception as e:
-                        results[token_type] = {'error': str(e)}
-            
+                if not forged_token:
+                    continue
+                forged_headers = dict(base_headers, Authorization=f'Bearer {forged_token}')
+                try:
+                    response = session.get(api_url, headers=forged_headers)
+                    results[token_type] = {
+                        'status_code': response.status_code,
+                        'response_length': len(response.content),
+                        'success': response.status_code < 400,
+                        # Full token goes only to encrypted evidence; this is a
+                        # redactable reference in the report.
+                        'token': forged_token,
+                    }
+                except SafetyError:
+                    raise
+                except Exception as e:
+                    results[token_type] = {'error': str(e)}
+
+        except SafetyError:
+            raise
         except Exception as e:
             results['error'] = str(e)
-        
+
         return results
     
     def generate_report(self) -> Dict:
@@ -639,12 +661,26 @@ def main():
     parser.add_argument('token', nargs='?', help='JWT token to analyze')
     parser.add_argument('-f', '--file', help='File containing JWT token')
     parser.add_argument('-w', '--wordlist', help='Wordlist file for brute force attack')
-    parser.add_argument('-t', '--test-api', help='API endpoint to test token against')
+    parser.add_argument('-t', '--test-api', help='API endpoint to test token against (requires --roe)')
     parser.add_argument('-o', '--output', help='Output file for analysis report')
     parser.add_argument('--brute-force', action='store_true', help='Attempt to brute force HMAC secret')
     parser.add_argument('--max-attempts', type=int, default=10000, help='Maximum brute force attempts')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
-    
+    # Safety-layer options (required only for --test-api network testing).
+    parser.add_argument('--roe', help='Signed Rules-of-Engagement JSON (required for --test-api)')
+    parser.add_argument('--trusted-key', action='append', default=[],
+                        help='Trusted authorizer public key (hex); repeatable')
+    parser.add_argument('--allow-untrusted-roe', action='store_true',
+                        help='LAB ONLY: accept a signed ROE whose key is not trusted')
+    parser.add_argument('--insecure', action='store_true',
+                        help='Disable TLS verification (audited); off by default')
+    parser.add_argument('--ca-bundle', help='Test CA bundle (preferred over --insecure)')
+    parser.add_argument('--evidence-dir', help='Directory for the encrypted evidence store')
+    parser.add_argument('--evidence-passphrase', help='Passphrase (or set EVIDENCE_PASSPHRASE)')
+    parser.add_argument('--reveal-raw', action='store_true',
+                        help='Write raw tokens into the report instead of redacting (audited)')
+    parser.add_argument('--audit-log', help='Path to the tamper-evident audit log (JSONL)')
+
     args = parser.parse_args()
     
     # Get token from argument or file
@@ -680,25 +716,64 @@ def main():
             if secret:
                 print(f"[+] Found secret: {secret}")
         
-        # Test against API if provided
+        # Set up evidence + audit if requested (used for redacted reporting too).
+        audit = AuditLog(args.audit_log, identity={"tool": "jwt_analyzer"}) if args.audit_log else None
+        evidence = None
+        if args.evidence_dir:
+            evidence = EvidenceStore(args.evidence_dir, passphrase=args.evidence_passphrase)
+
+        # Test against API if provided - this touches a live target, so it
+        # requires a signed, in-scope ROE and goes through SafeSession.
+        api_results = None
         if args.test_api:
-            api_results = analyzer.test_token_against_api(args.test_api)
+            if not args.roe:
+                print("[-] --test-api sends requests to a live endpoint and "
+                      "requires a signed --roe. Refusing.")
+                sys.exit(3)
+            roe = RulesOfEngagement.load(
+                args.roe, trusted_keys=args.trusted_key or None,
+                require_trusted=not args.allow_untrusted_roe,
+            )
+            roe.require_url(args.test_api)  # fail closed before any request
+            if audit is None and args.audit_log is None:
+                audit = AuditLog(str(Path(args.evidence_dir or '.') / 'jwt_audit.jsonl'),
+                                 identity=roe.identity())
+            tls = TLSPolicy(insecure=args.insecure, ca_bundle=args.ca_bundle)
+            if args.insecure:
+                print("[!] WARNING: TLS verification DISABLED (--insecure).")
+            session = SafeSession(roe, tls=tls, audit=audit)
+
+            api_results = analyzer.test_token_against_api(args.test_api, session, roe)
             print(f"\n[+] API Test Results:")
             for test_type, result in api_results.items():
-                if 'error' in result:
+                if isinstance(result, str):
+                    print(f"    {test_type}: {result}")
+                elif 'error' in result:
                     print(f"    {test_type}: Error - {result['error']}")
                 else:
                     status = "SUCCESS" if result['success'] else "FAILED"
                     print(f"    {test_type}: {status} (HTTP {result['status_code']})")
-        
+
         # Generate report
         report = analyzer.generate_report()
-        
-        # Save report if output file specified
+        if api_results is not None:
+            report['api_test'] = api_results
+
+        # Save report if output file specified. Full findings (raw tokens) go to
+        # the encrypted evidence store; the written report is redacted by default.
         if args.output:
+            if evidence is not None:
+                custody = evidence.store('jwt_report', report, reveal_raw=args.reveal_raw)
+                report['evidence'] = custody
+                if audit:
+                    audit.record('evidence_stored', custody)
+            out_report = report if args.reveal_raw else redact(report, reveal=False)
             with open(args.output, 'w') as f:
-                json.dump(report, f, indent=2)
-            print(f"\n[+] Report saved to {args.output}")
+                json.dump(out_report, f, indent=2)
+            print(f"\n[+] Report saved to {args.output}"
+                  f"{'' if args.reveal_raw else ' (redacted; raw tokens in encrypted evidence if --evidence-dir set)'}")
+            if audit:
+                audit.record('report_written', {'output': args.output, 'redacted': not args.reveal_raw})
         
         # Print summary
         print(f"\n[+] Analysis Summary:")

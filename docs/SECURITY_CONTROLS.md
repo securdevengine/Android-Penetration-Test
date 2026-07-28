@@ -5,11 +5,22 @@ route every operation through a shared control layer (`scripts/core/`) that
 fails **closed**: if authorization, scope, timing, or an emergency stop cannot
 be satisfied, the operation is refused rather than run.
 
-> Status: this layer currently wraps the authentication tester and the OWASP
-> scanner. Other scripts (`jwt_analyzer.py`, `secret_finder.py`,
-> `frida_automation.py`) are being migrated onto it — see
-> [Remaining work](#remaining-work). Until a tool states it enforces the ROE,
-> treat it as lab-only.
+> Status: the authentication tester, OWASP scanner, JWT analyzer, secret
+> finder, and Frida automation now route through this layer. Remaining
+> platform work is listed under [Remaining work](#remaining-work). Until a tool
+> states it enforces the ROE, treat it as lab-only.
+>
+> Per-tool notes:
+> * `jwt_analyzer.py` — offline token analysis needs no ROE; `--test-api`
+>   (live network) requires a signed, in-scope ROE and uses TLS-on SafeSession,
+>   with forged-token submission gated behind intrusive approval. Reports are
+>   redacted by default.
+> * `secret_finder.py` — static; secret values are masked in reports by
+>   default, with raw values written only to the encrypted evidence store.
+> * `frida_automation.py` — requires a signed ROE that scopes the target
+>   package (`--allow-no-roe` for lab), reports per-hook capability status
+>   (`AVAILABLE`/`DEGRADED`/`FAILED`), redacts captured runtime data by default,
+>   and counts dropped events at category caps.
 
 ## The control layer
 
@@ -121,10 +132,13 @@ fail-closed and HTML-escaping behavior.
 
 These items from the assessment are **not yet** addressed and remain lab-only:
 
-* Migrate `jwt_analyzer.py`, `secret_finder.py`, `frida_automation.py` onto the
-  ROE + evidence layer (TLS default, redaction, capability status).
-* Disposable, network-isolated APK-processing workers (sandbox enforcement).
-* Capability reporting (`AVAILABLE`/`DEGRADED`/`FAILED`) for the Frida workflow.
+* Disposable, network-isolated APK-processing workers (sandbox enforcement, #4).
+* Full event-schema rework for Frida (#12): versioned schemas, typed fields,
+  correlation IDs. (Type-first categorization, monotonic sequence numbers, and
+  dropped-event counters are in place; the rest remains.)
+* Regex → call-graph / data-flow analysis for the OWASP scanner (#10).
 * README / PROJECT_SUMMARY accuracy pass (remove claims for files that do not
-  yet exist).
+  yet exist, #6).
 * Structured findings schema, CWE/MASVS mappings, dedup/baseline, SARIF export.
+* Missing advertised modules (token interceptor, ADB helper, report generator,
+  `exploits/` modules, default Frida scripts referenced by the automation).

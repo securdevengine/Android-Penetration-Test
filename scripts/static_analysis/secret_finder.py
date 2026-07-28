@@ -9,6 +9,7 @@ entropy analysis.
 
 import re
 import os
+import sys
 import json
 import argparse
 import base64
@@ -18,6 +19,23 @@ from typing import List, Dict, Set, Optional, Tuple
 import string
 import math
 from collections import Counter
+
+# Bootstrap the shared safety/control layer (scripts/core).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from core.evidence import EvidenceStore, AuditLog  # noqa: E402
+
+
+def _mask_value(value: str) -> str:
+    """Return a non-reversible, triage-friendly placeholder for a secret.
+
+    Keeps a short prefix/suffix for correlation but never the full value, so
+    reports do not retain live secrets by default.
+    """
+    fp = hashlib.sha256(value.encode("utf-8", "replace")).hexdigest()[:8]
+    if len(value) >= 8:
+        return f"[REDACTED:secret:{fp}] ({value[:2]}…{value[-2:]}, len={len(value)})"
+    return f"[REDACTED:secret:{fp}] (len={len(value)})"
+
 
 class SecretFinder:
     def __init__(self, source_path: str):
@@ -487,22 +505,39 @@ class SecretFinder:
         
         print(f"    Final count: {len(self.secrets)} unique secrets")
     
-    def save_results(self, output_file: str):
-        """Save secret findings to file"""
+    def _redacted_secrets(self) -> List[Dict]:
+        """Copies of the findings with the raw secret value masked."""
+        redacted = []
+        for secret in self.secrets:
+            copy = dict(secret)
+            if 'value' in copy:
+                copy['value'] = _mask_value(str(copy['value']))
+            # line_content can embed the secret too - mask it out.
+            if secret.get('value') and secret.get('line_content'):
+                copy['line_content'] = copy['line_content'].replace(
+                    str(secret['value']), _mask_value(str(secret['value']))
+                )
+            redacted.append(copy)
+        return redacted
+
+    def save_results(self, output_file: str, reveal_raw: bool = False):
+        """Save secret findings. Values are MASKED unless reveal_raw is set."""
         results = {
             'summary': {
                 'total_secrets': len(self.secrets),
                 'by_severity': self._get_severity_summary(),
                 'by_type': self._get_type_summary(),
-                'source_path': str(self.source_path)
+                'source_path': str(self.source_path),
+                'redacted': not reveal_raw,
             },
-            'secrets': self.secrets
+            'secrets': self.secrets if reveal_raw else self._redacted_secrets()
         }
-        
+
         with open(output_file, 'w') as f:
             json.dump(results, f, indent=2)
-        
-        print(f"[+] Results saved to {output_file}")
+
+        print(f"[+] Results saved to {output_file}"
+              f"{'' if reveal_raw else ' (secret values masked)'}")
     
     def _get_severity_summary(self) -> Dict[str, int]:
         """Get summary by severity"""
@@ -524,11 +559,17 @@ class SecretFinder:
         
         return summary
     
-    def generate_report(self, output_file: str):
-        """Generate human-readable report"""
+    def generate_report(self, output_file: str, reveal_raw: bool = False):
+        """Generate a human-readable report. Values MASKED unless reveal_raw."""
+        def show(secret):
+            return str(secret['value']) if reveal_raw else _mask_value(str(secret['value']))
+
         with open(output_file, 'w') as f:
             f.write("# Secret Analysis Report\n\n")
             f.write(f"**Source:** {self.source_path}\n")
+            if not reveal_raw:
+                f.write("**Note:** secret values are masked; raw values are in the "
+                        "encrypted evidence store if one was configured.\n")
             f.write(f"**Total Secrets Found:** {len(self.secrets)}\n\n")
             
             # Severity summary
@@ -555,12 +596,15 @@ class SecretFinder:
                     current_severity = secret['severity']
                     f.write(f"### {current_severity} Severity\n\n")
                 
+                masked_context = secret['line_content']
+                if not reveal_raw and secret.get('value'):
+                    masked_context = masked_context.replace(str(secret['value']), '…')
                 f.write(f"#### {secret['description']}\n")
                 f.write(f"- **File:** `{secret['file']}:{secret['line_number']}`\n")
-                f.write(f"- **Value:** `{secret['value'][:50]}{'...' if len(secret['value']) > 50 else ''}`\n")
+                f.write(f"- **Value:** `{show(secret)}`\n")
                 f.write(f"- **Confidence:** {secret['confidence']:.2f}\n")
                 f.write(f"- **Entropy:** {secret['entropy']:.2f}\n")
-                f.write(f"- **Context:** `{secret['line_content'][:100]}{'...' if len(secret['line_content']) > 100 else ''}`\n\n")
+                f.write(f"- **Context:** `{masked_context[:100]}{'...' if len(masked_context) > 100 else ''}`\n\n")
     
     def get_high_confidence_secrets(self, min_confidence: float = 0.7) -> List[Dict]:
         """Get only high-confidence secrets"""
@@ -583,9 +627,14 @@ def main():
     parser.add_argument('--critical-only', action='store_true',
                         help='Show only critical severity secrets')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
-    
+    parser.add_argument('--reveal-raw', action='store_true',
+                        help='Write raw secret values into outputs instead of masking (audited)')
+    parser.add_argument('--evidence-dir', help='Directory for the encrypted evidence store (raw values)')
+    parser.add_argument('--evidence-passphrase', help='Passphrase (or set EVIDENCE_PASSPHRASE)')
+    parser.add_argument('--audit-log', help='Path to the tamper-evident audit log (JSONL)')
+
     args = parser.parse_args()
-    
+
     if not os.path.exists(args.source_path):
         print(f"[-] Source path not found: {args.source_path}")
         return
@@ -602,17 +651,29 @@ def main():
         elif args.confidence > 0:
             secrets = [s for s in secrets if s['confidence'] >= args.confidence]
         
-        # Save results
+        finder.secrets = secrets
+
+        # Raw values (unmasked) go only to the encrypted evidence store.
+        audit = AuditLog(args.audit_log, identity={"tool": "secret_finder"}) if args.audit_log else None
+        if args.evidence_dir:
+            store = EvidenceStore(args.evidence_dir, passphrase=args.evidence_passphrase)
+            custody = store.store('secret_findings',
+                                  {'source': str(finder.source_path), 'secrets': secrets},
+                                  reveal_raw=True, redact_first=False)
+            print(f"[+] Raw secret values encrypted to evidence store: {custody['path']}")
+            if audit:
+                audit.record('evidence_stored', custody)
+
+        # Save results (masked unless --reveal-raw)
         if args.output:
-            # Update finder's secrets for saving
-            finder.secrets = secrets
-            finder.save_results(args.output)
-        
-        # Generate report
+            finder.save_results(args.output, reveal_raw=args.reveal_raw)
+            if audit:
+                audit.record('report_written', {'output': args.output, 'redacted': not args.reveal_raw})
+
+        # Generate report (masked unless --reveal-raw)
         if args.report:
-            finder.secrets = secrets
-            finder.generate_report(args.report)
-        
+            finder.generate_report(args.report, reveal_raw=args.reveal_raw)
+
         print(f"\n[+] Secret analysis complete!")
         print(f"    Found {len(secrets)} secrets")
         
@@ -631,9 +692,10 @@ def main():
         if args.verbose and secrets:
             print(f"\n[+] Top 5 findings:")
             for i, secret in enumerate(secrets[:5], 1):
+                shown = str(secret['value']) if args.reveal_raw else _mask_value(str(secret['value']))
                 print(f"    {i}. {secret['description']} (Confidence: {secret['confidence']:.2f})")
                 print(f"       File: {secret['file']}:{secret['line_number']}")
-                print(f"       Value: {secret['value'][:50]}{'...' if len(secret['value']) > 50 else ''}")
+                print(f"       Value: {shown}")
         
     except Exception as e:
         print(f"[-] Secret analysis failed: {e}")

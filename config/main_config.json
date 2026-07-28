@@ -40,7 +40,7 @@
             "host": "127.0.0.1",
             "port": 8080
         },
-        "ssl_verification": false,
+        "ssl_verification": true,
         "timeout": 30,
         "retry_attempts": 3
     },

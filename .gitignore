@@ -82,3 +82,17 @@ test_data/
 .env
 .env.local
 set_android_env.*
+
+# Engagement / evidence artifacts (may contain scope, identity, or secrets)
+evidence/
+*.enc
+.salt
+audit/
+*.audit.jsonl
+.kill-*
+authorizer.key
+*.signed.json
+engagement.json
+engagement.signed.json
+# ...but keep the committed template
+!config/engagement.example.json

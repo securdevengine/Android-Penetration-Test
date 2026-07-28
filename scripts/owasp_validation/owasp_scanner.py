@@ -4,6 +4,8 @@ import os
 import sys
 import re
 import json
+import html
+import shlex
 import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -12,12 +14,37 @@ import sqlite3
 import tempfile
 from datetime import datetime
 
+# Capability status values for each analysis prerequisite.
+AVAILABLE = "AVAILABLE"
+DEGRADED = "DEGRADED"
+FAILED = "FAILED"
+
+
+def _load_security_config():
+    """Load the security section of main_config.json (extension/size limits)."""
+    cfg_path = Path(__file__).resolve().parents[2] / "config" / "main_config.json"
+    defaults = {
+        "max_file_size": 104857600,
+        "allowed_extensions": [".apk", ".aar", ".dex", ".jar"],
+        "scan_timeout": 600,
+    }
+    try:
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        sec = data.get("security", {})
+        defaults.update({k: sec[k] for k in defaults if k in sec})
+    except (OSError, json.JSONDecodeError):
+        pass
+    return defaults
+
+
 class OWASPMobileScanner:
     def __init__(self, apk_path, output_dir=None):
         self.apk_path = Path(apk_path)
+        self.security = _load_security_config()
+        self._validate_input()
         self.output_dir = Path(output_dir) if output_dir else Path(f"output/owasp_scan_{self.apk_path.stem}")
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Results storage
         self.findings = {
             'M1_Credential_Usage': [],
@@ -31,37 +58,89 @@ class OWASPMobileScanner:
             'M9_Data_Storage': [],
             'M10_Cryptography': []
         }
-        
+
+        # Decompilation capability status (fail-closed reporting).
+        self.capabilities = {"jadx": FAILED, "apktool": FAILED}
+        self.scan_complete = False
+
         # Decompiled paths
         self.jadx_output = self.output_dir / "jadx"
         self.apktool_output = self.output_dir / "apktool"
-        
+
+    def _validate_input(self):
+        """Enforce the declared extension/size limits before touching the APK."""
+        if not self.apk_path.is_file():
+            raise ValueError(f"APK file not found: {self.apk_path}")
+        ext = self.apk_path.suffix.lower()
+        allowed = [e.lower() for e in self.security["allowed_extensions"]]
+        if ext not in allowed:
+            raise ValueError(
+                f"Refusing {self.apk_path.name}: extension {ext!r} not in "
+                f"allowed set {allowed}."
+            )
+        size = self.apk_path.stat().st_size
+        if size > self.security["max_file_size"]:
+            raise ValueError(
+                f"Refusing {self.apk_path.name}: {size} bytes exceeds "
+                f"max_file_size {self.security['max_file_size']}."
+            )
+
     def run_command(self, cmd, capture_output=True, timeout=300):
+        """Run a subprocess. `cmd` must be an argument LIST.
+
+        Passing a list (never a shell string) means paths containing spaces -
+        including this workspace - are handled correctly and no shell parsing
+        occurs. A string is accepted only as a legacy fallback and is split
+        with shlex, not naive whitespace splitting.
+        """
         try:
             if isinstance(cmd, str):
-                cmd = cmd.split()
-            result = subprocess.run(cmd, capture_output=capture_output, 
+                cmd = shlex.split(cmd, posix=(os.name != "nt"))
+            result = subprocess.run(cmd, capture_output=capture_output,
                                   text=True, timeout=timeout, cwd=self.output_dir)
             return result.returncode == 0, result.stdout, result.stderr
+        except FileNotFoundError as e:
+            return False, "", f"tool not found: {e}"
         except Exception as e:
             return False, "", str(e)
-    
+
     def decompile_apk(self):
+        """Decompile the APK, tracking per-tool capability status.
+
+        Fails closed: if neither JADX nor APKTool succeeds there is no
+        decompiled corpus to scan, so the scan is marked INCOMPLETE. The
+        misleading unconditional "decompiled successfully" message is gone.
+        """
         print("[*] Decompiling APK...")
-        
-        # JADX decompilation
-        jadx_cmd = f"jadx -d {self.jadx_output} {self.apk_path}"
-        success, stdout, stderr = self.run_command(jadx_cmd)
-        if not success:
-            print(f"[!] JADX decompilation failed: {stderr}")
-        
-        # APKTool decompilation
-        apktool_cmd = f"apktool d {self.apk_path} -o {self.apktool_output}"
-        success, stdout, stderr = self.run_command(apktool_cmd)
-        if not success:
-            print(f"[!] APKTool decompilation failed: {stderr}")
-        
-        print("[+] APK decompiled successfully")
+
+        # Build argument LISTS (finding #8): no shell string, spaces safe.
+        jadx_ok, _, jadx_err = self.run_command(
+            ["jadx", "-d", str(self.jadx_output), str(self.apk_path)]
+        )
+        self.capabilities["jadx"] = AVAILABLE if jadx_ok else FAILED
+        if not jadx_ok:
+            print(f"[!] JADX decompilation FAILED: {jadx_err.strip()[:200]}")
+
+        apktool_ok, _, apktool_err = self.run_command(
+            ["apktool", "d", str(self.apk_path), "-o", str(self.apktool_output), "-f"]
+        )
+        self.capabilities["apktool"] = AVAILABLE if apktool_ok else FAILED
+        if not apktool_ok:
+            print(f"[!] APKTool decompilation FAILED: {apktool_err.strip()[:200]}")
+
+        if jadx_ok and apktool_ok:
+            self.scan_complete = True
+            print("[+] APK decompiled successfully (JADX + APKTool).")
+        elif jadx_ok or apktool_ok:
+            self.scan_complete = True  # partial corpus is still scannable
+            ok_tool = "JADX" if jadx_ok else "APKTool"
+            print(f"[~] Decompilation DEGRADED: only {ok_tool} succeeded; "
+                  "results are partial.")
+        else:
+            self.scan_complete = False
+            print("[-] Decompilation FAILED: neither JADX nor APKTool produced "
+                  "output. Scan is INCOMPLETE - findings cannot be trusted.")
+        return self.scan_complete
     
     def scan_m1_credential_usage(self):
         print("[*] Scanning M1: Improper Credential Usage...")
@@ -596,6 +675,8 @@ class OWASPMobileScanner:
             'scan_info': {
                 'apk_path': str(self.apk_path),
                 'scan_date': datetime.now().isoformat(),
+                'scan_status': 'COMPLETE' if self.scan_complete else 'INCOMPLETE',
+                'capabilities': self.capabilities,
                 'total_findings': total_findings,
                 'severity_breakdown': {
                     'HIGH': high_severity,
@@ -605,6 +686,9 @@ class OWASPMobileScanner:
             },
             'findings': self.findings
         }
+        if not self.scan_complete:
+            print("[!] SCAN INCOMPLETE: decompilation did not produce a corpus. "
+                  "'No findings' here does NOT mean the app is secure.")
         
         json_report_path = self.output_dir / "owasp_mobile_top10_report.json"
         with open(json_report_path, 'w') as f:
@@ -630,10 +714,30 @@ class OWASPMobileScanner:
         return report
     
     def generate_html_report(self, report):
-        html = f"""
-        <!DOCTYPE html>
+        # Every value below originates from APK-derived content and is therefore
+        # untrusted. Escape it (finding #13) and serve under a restrictive CSP
+        # so a crafted APK cannot inject markup or script into the report.
+        def e(value):
+            return html.escape(str(value), quote=True)
+
+        info = report['scan_info']
+        sev = info['severity_breakdown']
+        status = info.get('scan_status', 'UNKNOWN')
+        status_banner = ""
+        if status != 'COMPLETE':
+            status_banner = (
+                f'<div class="summary" style="background:#fdecea;border-left:4px solid #e74c3c">'
+                f'<strong>SCAN {e(status)}.</strong> Decompilation did not fully '
+                f'succeed (capabilities: {e(info.get("capabilities", {}))}). '
+                f'"No findings" here does not indicate the app is secure.</div>'
+            )
+
+        html_doc = f"""<!DOCTYPE html>
         <html>
         <head>
+            <meta charset="utf-8">
+            <meta http-equiv="Content-Security-Policy"
+                  content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
             <title>OWASP Mobile Top 10 2024 Report</title>
             <style>
                 body {{ font-family: Arial, sans-serif; margin: 40px; }}
@@ -645,25 +749,26 @@ class OWASPMobileScanner:
                 .low {{ border-left-color: #27ae60; }}
                 .category {{ margin: 30px 0; }}
                 .category h2 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }}
-                code {{ background: #f1c40f; padding: 2px 4px; border-radius: 3px; }}
+                code {{ background: #f1c40f; padding: 2px 4px; border-radius: 3px; word-break: break-all; }}
             </style>
         </head>
         <body>
             <div class="header">
                 <h1>OWASP Mobile Top 10 2024 Security Assessment</h1>
-                <p>APK: {report['scan_info']['apk_path']}</p>
-                <p>Scan Date: {report['scan_info']['scan_date']}</p>
+                <p>APK: {e(info['apk_path'])}</p>
+                <p>Scan Date: {e(info['scan_date'])}</p>
+                <p>Scan Status: {e(status)}</p>
             </div>
-            
+            {status_banner}
             <div class="summary">
                 <h2>Executive Summary</h2>
-                <p><strong>Total Findings:</strong> {report['scan_info']['total_findings']}</p>
-                <p><strong>High Severity:</strong> {report['scan_info']['severity_breakdown']['HIGH']}</p>
-                <p><strong>Medium Severity:</strong> {report['scan_info']['severity_breakdown']['MEDIUM']}</p>
-                <p><strong>Low Severity:</strong> {report['scan_info']['severity_breakdown']['LOW']}</p>
+                <p><strong>Total Findings:</strong> {e(info['total_findings'])}</p>
+                <p><strong>High Severity:</strong> {e(sev['HIGH'])}</p>
+                <p><strong>Medium Severity:</strong> {e(sev['MEDIUM'])}</p>
+                <p><strong>Low Severity:</strong> {e(sev['LOW'])}</p>
             </div>
         """
-        
+
         # Add findings for each category
         owasp_categories = {
             'M1_Credential_Usage': 'M1: Improper Credential Usage',
@@ -680,36 +785,45 @@ class OWASPMobileScanner:
         
         for category_key, category_name in owasp_categories.items():
             findings = report['findings'].get(category_key, [])
-            html += f"""
+            html_doc += f"""
             <div class="category">
-                <h2>{category_name}</h2>
-                <p><strong>Findings:</strong> {len(findings)}</p>
+                <h2>{e(category_name)}</h2>
+                <p><strong>Findings:</strong> {e(len(findings))}</p>
             """
-            
+
             if findings:
                 for finding in findings:
-                    severity_class = finding.get('severity', 'MEDIUM').lower()
-                    html += f"""
+                    # severity_class is constrained to a known set so it can
+                    # never break out of the class attribute.
+                    severity = str(finding.get('severity', 'MEDIUM')).upper()
+                    severity_class = severity.lower() if severity in ('HIGH', 'MEDIUM', 'LOW') else 'medium'
+                    line_html = (f"<p><strong>Line:</strong> {e(finding.get('line', 'N/A'))}</p>"
+                                 if 'line' in finding else '')
+                    desc_html = (f"<p><strong>Description:</strong> {e(finding.get('description', 'N/A'))}</p>"
+                                 if 'description' in finding else '')
+                    code_html = (f"<p><strong>Code:</strong> <code>{e(finding.get('code', 'N/A'))}</code></p>"
+                                 if 'code' in finding else '')
+                    html_doc += f"""
                     <div class="finding {severity_class}">
-                        <h4>{finding.get('type', 'Unknown')}</h4>
-                        <p><strong>Severity:</strong> {finding.get('severity', 'MEDIUM')}</p>
-                        <p><strong>File:</strong> {finding.get('file', 'N/A')}</p>
-                        {f"<p><strong>Line:</strong> {finding.get('line', 'N/A')}</p>" if 'line' in finding else ''}
-                        {f"<p><strong>Description:</strong> {finding.get('description', 'N/A')}</p>" if 'description' in finding else ''}
-                        {f"<p><strong>Code:</strong> <code>{finding.get('code', 'N/A')}</code></p>" if 'code' in finding else ''}
+                        <h4>{e(finding.get('type', 'Unknown'))}</h4>
+                        <p><strong>Severity:</strong> {e(severity)}</p>
+                        <p><strong>File:</strong> {e(finding.get('file', 'N/A'))}</p>
+                        {line_html}
+                        {desc_html}
+                        {code_html}
                     </div>
                     """
             else:
-                html += "<p>No findings detected for this category.</p>"
-            
-            html += "</div>"
-        
-        html += """
+                html_doc += "<p>No findings detected for this category.</p>"
+
+            html_doc += "</div>"
+
+        html_doc += """
         </body>
         </html>
         """
-        
-        return html
+
+        return html_doc
     
     def run_full_scan(self):
         print("OWASP Mobile Top 10 2024 Scanner")
@@ -737,15 +851,22 @@ def main():
     if len(sys.argv) != 2:
         print("Usage: python owasp_scanner.py <path_to_apk>")
         sys.exit(1)
-    
+
     apk_path = sys.argv[1]
-    if not os.path.exists(apk_path):
-        print(f"Error: APK file not found: {apk_path}")
+    try:
+        scanner = OWASPMobileScanner(apk_path)
+    except ValueError as e:
+        print(f"Error: {e}")
         sys.exit(1)
-    
-    scanner = OWASPMobileScanner(apk_path)
+
     report = scanner.run_full_scan()
-    
+
+    if not scanner.scan_complete:
+        # Fail closed (finding #9): an incomplete scan must not look like a
+        # clean pass. Exit nonzero so CI and operators notice.
+        print(f"\n[!] Scan INCOMPLETE. Output: {scanner.output_dir}")
+        sys.exit(2)
+
     print(f"\nScan complete! Check the output directory: {scanner.output_dir}")
 
 if __name__ == "__main__":
